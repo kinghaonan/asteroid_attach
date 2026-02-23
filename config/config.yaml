@@ -1,0 +1,159 @@
+# 小行星附着轨迹设计项目 - 配置文件
+# 修改此文件来调整各阶段的参数，无需修改代码
+
+# ==================== 第一阶段：引力场学习 ====================
+phase1:
+  # PLY模型设置
+  ply_file: "Castalia Radar-based.ply"
+  target_diameter_m: 1400.0  # 目标直径（米）
+  asteroid_density: 2670      # 小行星密度（kg/m³）
+  
+  # 样本生成设置
+  sampling:
+    num_samples: 500          # 样本数量（验证用500，正式用5000-10000）
+    min_r_ratio: 1.001          # 最小采样半径倍数（相对小行星半径）
+    max_r_ratio: 5.0          # 最大采样半径倍数
+    reuse_existing: true      # 是否复用已存在的样本文件
+    
+    # 样本文件路径（支持两种格式，优先使用 pkl）
+    pkl_file: "data/samples/samples_with_gradient.pkl"  # pickle格式（推荐，包含完整信息）
+    npz_file: "data/samples/gravity_samples.npz"       # npz格式（备用）
+  
+  # DNN模型架构
+  model:
+    input_dim: 3              # 输入维度（位置xyz）
+    gravity_dim: 3            # 引力输出维度
+    gradient_dim: 9           # 梯度输出维度
+    shared_features: [256, 512, 512, 512, 256]  # 共享层结构
+    head_features: [128]      # 输出头层结构
+  
+  # 训练参数
+  training:
+    epochs: 200                # 训练轮次
+    batch_size: 64            # 批次大小
+    learning_rate: 0.0001     # 学习率
+    lr_scheduler_step: 20     # 学习率调整步长
+    lr_scheduler_gamma: 0.5   # 学习率调整系数
+    gravity_weight: 1.0       # 引力损失权重
+    gradient_weight: 0.5      # 梯度损失权重
+    print_freq: 5             # 打印频率（每N轮打印一次）
+  
+  # 输出设置
+  output:
+    model_file: "data/models/gravity_dnn_model.pth"
+    save_plots: true
+
+# ==================== 第二阶段：轨迹优化 ====================
+phase2:
+  # 航天器参数
+  spacecraft:
+    T_max: 20.0               # 最大推力（N）
+    I_sp: 400.0               # 比冲（s）
+    g0: 9.81                  # 地球重力加速度（m/s²）
+    m0: 1000.0                # 初始质量（kg）
+  
+  # 小行星参数
+  asteroid:
+    omega: [0, 0, 0.0003317]  # 自转角速度（rad/s），2π/(5.27*3600)
+    mu: 446300.0              # 引力常数（m³/s²）
+  
+  # 边界条件
+  boundary_conditions:
+    r0: [10177, 6956, 8256]   # 初始位置（m）
+    v0: [-25, -12, -17]       # 初始速度（m/s）
+    rf: [676, 5121, 449]      # 目标位置（m）
+    vf: [0, 0, 0]             # 目标速度（m/s）
+    t_span: [0, 770]          # 时间区间（s）
+  
+  # 伪谱法参数
+  pseudospectral:
+    enabled: true             # 是否启用
+    n_nodes: 20               # 节点数
+    max_iter: 100             # 最大迭代次数
+  
+  # 打靶法参数
+  shooting:
+    enabled: true             # 是否启用
+    n_guesses: 2              # 初始猜测数量（减少以加速）
+  
+  # 同伦法参数
+  homotopy:
+    enabled: false            # 是否启用（禁用以加速测试）
+    n_steps: 3                # 同伦步数（减少以提高速度）
+  
+  # 直接法/凸优化参数
+  direct:
+    enabled: true             # 是否启用
+    n_nodes: 30               # 节点数
+    max_iter: 100             # 最大迭代次数
+  
+  # 凸优化（SOCP）参数 - 基于NASA论文
+  socp:
+    enabled: true             # 是否启用
+    n_nodes: 30               # 节点数
+    max_iter: 15              # 最大迭代次数
+  
+  # 输出设置
+  output:
+    trajectory_file: "results/phase2/optimal_trajectory.pkl"
+    save_plots: true
+
+# ==================== 第三阶段：控制与仿真 ====================
+phase3:
+  # PID控制器参数
+  pid:
+    Kp: 2.0                   # 比例增益
+    Ki: 0.2                   # 积分增益
+    Kd: 1.0                   # 微分增益
+    integral_limit: 100.0     # 积分限幅
+  
+  # 自适应PID参数（可选）
+  adaptive_pid:
+    enabled: false            # 是否使用自适应PID
+    adaptation_rate: 0.01
+    error_threshold: 1.0
+  
+  # 轨迹跟踪仿真参数
+  tracking:
+    dt: 1.0                   # 时间步长（s）
+    n_steps: 10               # 模拟步数
+    position_noise: 10.0      # 位置扰动（m）
+    velocity_noise: 1.0       # 速度扰动（m/s）
+  
+  # 蒙特卡洛模拟参数
+  monte_carlo:
+    enabled: true             # 是否启用
+    n_simulations: 20         # 模拟次数（验证用20，正式用100+）
+    position_noise: 50.0      # 初始位置扰动（m）
+    velocity_noise: 2.0       # 初始速度扰动（m/s）
+    success_threshold: 70.0   # 成功率阈值（%）
+  
+  # 评估标准
+  evaluation:
+    max_position_error: 50.0  # 最大允许位置误差（m）
+    max_velocity_error: 5.0   # 最大允许速度误差（m/s）
+    min_success_rate: 70.0    # 最小成功率（%）
+  
+  # 输出设置
+  output:
+    results_file: "results/phase3/control_simulation.pkl"
+    report_file: "results/phase3/final_report.txt"
+    save_plots: true
+
+# ==================== 全局设置 ====================
+global:
+  # 随机种子（用于可重复性）
+  random_seed: 42
+  
+  # 绘图设置
+  plotting:
+    dpi: 150                  # 图像分辨率
+    figure_size: [15, 10]     # 默认图像尺寸
+    font_family: "SimHei"     # 中文字体
+    save_format: "png"        # 图像格式
+  
+  # 调试模式
+  debug: false                # 是否打印调试信息
+  
+  # 工作目录（相对于项目根目录）
+  working_directory: "."

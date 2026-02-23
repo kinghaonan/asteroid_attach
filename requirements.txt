@@ -1,0 +1,27 @@
+# 小行星附着最优轨迹设计项目
+# Asteroid Landing Optimal Trajectory Design
+
+# 科学计算
+numpy>=1.21.0
+scipy>=1.7.0
+
+# 深度学习
+torch>=1.9.0
+
+# 数据处理和机器学习
+scikit-learn>=0.24.0
+
+# 可视化
+matplotlib>=3.4.0
+plotly>=5.0.0
+
+# 3D模型处理
+plyfile>=0.7.4
+
+# 配置文件
+pyyaml>=5.4.0
+
+# 开发工具
+pytest>=6.2.0
+black>=21.0
+flake8>=3.9.0
