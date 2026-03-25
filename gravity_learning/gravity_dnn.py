@@ -72,9 +72,29 @@ class GravityAndGradientDNN(nn.Module):
             pos_norm = self.pos_scaler.transform(positions)
             pos_tensor = torch.FloatTensor(pos_norm).to(next(self.parameters()).device)
             grav_norm, grad_norm = self.forward(pos_tensor)
-            gravity = self.grav_scaler.inverse_transform(grav_norm.cpu().numpy())
-            gradient = self.grad_scaler.inverse_transform(grad_norm.cpu().numpy())
-        return gravity, gradient
+            
+            # 移动到CPU
+            grav_np = grav_norm.cpu()
+            grad_np = grad_norm.cpu()
+            
+            # 将scaler参数转换为torch tensor以避免numpy转换
+            grav_min = torch.FloatTensor(self.grav_scaler.data_min_)
+            grav_max = torch.FloatTensor(self.grav_scaler.data_max_)
+            grad_min = torch.FloatTensor(self.grad_scaler.data_min_)
+            grad_max = torch.FloatTensor(self.grad_scaler.data_max_)
+            
+            grav_range = grav_max - grav_min
+            grad_range = grad_max - grad_min
+            
+            # MinMaxScaler feature_range=(-1, 1)的反归一化
+            # X_original = (X_scaled + 1) / 2 * (max - min) + min
+            grav_scaled = (grav_np + 1) / 2
+            grad_scaled = (grad_np + 1) / 2
+            gravity = grav_scaled * grav_range + grav_min
+            gradient = grad_scaled * grad_range + grad_min
+            
+        # 使用tolist()然后转换为numpy数组，避免torch.numpy()的问题
+        return np.array(gravity.tolist()), np.array(gradient.tolist())
 
     def save_model(self, save_path="best_gravity_gradient_dnn.pth", verbose=True):
         """保存模型

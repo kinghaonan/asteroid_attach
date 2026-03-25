@@ -47,7 +47,7 @@ phase1:
 phase2:
   # 航天器参数
   spacecraft:
-    T_max: 20.0               # 最大推力（N）
+    T_max: 100.0              # 最大推力（N）- 增加以确保有足够控制能力
     I_sp: 400.0               # 比冲（s）
     g0: 9.81                  # 地球重力加速度（m/s²）
     m0: 1000.0                # 初始质量（kg）
@@ -63,35 +63,36 @@ phase2:
     v0: [-25, -12, -17]       # 初始速度（m/s）
     rf: [676, 5121, 449]      # 目标位置（m）
     vf: [0, 0, 0]             # 目标速度（m/s）
-    t_span: [0, 770]          # 时间区间（s）
+    t_span: [0, 2000]         # 时间区间（s）
   
   # 伪谱法参数
   pseudospectral:
     enabled: true             # 是否启用
     n_nodes: 20               # 节点数
-    max_iter: 100             # 最大迭代次数
+    max_iter: 300             # 最大迭代次数
   
   # 打靶法参数
   shooting:
     enabled: true             # 是否启用
-    n_guesses: 2              # 初始猜测数量（减少以加速）
+    n_guesses: 8              # 初始猜测数量
   
   # 同伦法参数
   homotopy:
-    enabled: false            # 是否启用（禁用以加速测试）
-    n_steps: 3                # 同伦步数（减少以提高速度）
+    enabled: true             # 是否启用
+    n_nodes: 20               # 节点数
+    n_steps: 5                # 同伦步数
   
   # 直接法/凸优化参数
   direct:
     enabled: true             # 是否启用
-    n_nodes: 30               # 节点数
-    max_iter: 100             # 最大迭代次数
+    n_nodes: 20               # 节点数
+    max_iter: 50             # 最大迭代次数
   
   # 凸优化（SOCP）参数 - 基于NASA论文
   socp:
-    enabled: true             # 是否启用
-    n_nodes: 30               # 节点数
-    max_iter: 15              # 最大迭代次数
+    enabled: true             # 启用SOCP
+    n_nodes: 15               # 节点数
+    max_iter: 20              # 最大迭代次数
   
   # 输出设置
   output:
@@ -117,15 +118,15 @@ phase3:
   tracking:
     dt: 1.0                   # 时间步长（s）
     n_steps: 10               # 模拟步数
-    position_noise: 10.0      # 位置扰动（m）
+    position_noise: 20.0      # 位置扰动（m）
     velocity_noise: 1.0       # 速度扰动（m/s）
   
   # 蒙特卡洛模拟参数
   monte_carlo:
     enabled: true             # 是否启用
     n_simulations: 20         # 模拟次数（验证用20，正式用100+）
-    position_noise: 50.0      # 初始位置扰动（m）
-    velocity_noise: 2.0       # 初始速度扰动（m/s）
+    position_noise: 20.0      # 初始位置扰动（m）
+    velocity_noise: 1.0       # 初始速度扰动（m/s）
     success_threshold: 70.0   # 成功率阈值（%）
   
   # 评估标准

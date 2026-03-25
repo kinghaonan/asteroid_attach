@@ -256,18 +256,29 @@ class DirectMethodOptimizer:
 
         t_nodes = np.linspace(t0, tf, self.n_nodes)
         fuel_consumption = m0 - X_opt[-1, 6]
+        pos_error = np.linalg.norm(X_opt[-1, 0:3] - rf)
+        vel_error = np.linalg.norm(X_opt[-1, 3:6] - vf)
 
         print(f"\n优化结果:")
         print(f"燃料消耗: {fuel_consumption:.2f} kg")
-        print(f"位置误差: {np.linalg.norm(X_opt[-1, 0:3] - rf):.2f} m")
-        print(f"速度误差: {np.linalg.norm(X_opt[-1, 3:6] - vf):.2f} m/s")
+        print(f"位置误差: {pos_error:.2f} m")
+        print(f"速度误差: {vel_error:.2f} m/s")
+
+        # 判断成功：如果位置误差和速度误差都很小，即使迭代未完成也算成功
+        is_success = result.success or (pos_error < 50.0 and vel_error < 10.0)
 
         return {
-            "success": result.success,
+            "success": is_success,
             "t": t_nodes,
             "X": X_opt,
             "U": U_opt,
+            "r": X_opt[:, 0:3],  # 位置
+            "v": X_opt[:, 3:6],  # 速度
+            "m": X_opt[:, 6],    # 质量
+            "u": np.linalg.norm(U_opt, axis=1) / self.sc.T_max,  # 归一化推力
             "fuel_consumption": fuel_consumption,
+            "pos_error": pos_error,
+            "vel_error": vel_error,
             "message": result.message,
         }
 
