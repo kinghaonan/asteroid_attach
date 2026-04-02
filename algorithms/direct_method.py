@@ -181,8 +181,44 @@ class DirectMethodOptimizer:
             smoothness = 0
             for k in range(self.n_nodes - 1):
                 smoothness += np.linalg.norm(U[k + 1] - U[k]) ** 2
+            # Collision avoidance penalty (soft constraint)
+            avoid_penalty = 0.0
+            if getattr(self.ast, "radius", None) is not None and getattr(self.ast, "center", None) is not None:
+                center = np.array(self.ast.center)
+                radius = float(self.ast.radius)
+                margin = float(getattr(self.ast, "avoid_margin_m", 1.0))
+                safe_radius = max(radius - margin, 0.0)
+                dists = np.linalg.norm(X[:, 0:3] - center, axis=1)
+                penetration = np.maximum(0.0, safe_radius - dists)
+                weight = float(getattr(self.ast, "avoid_weight", 50.0))
+                avoid_penalty = weight * np.sum(penetration ** 2)
 
-            return fuel + 0.01 * smoothness
+            # Glide slope + near-vertical constraints (soft penalties)
+            glide_penalty = 0.0
+            vertical_penalty = 0.0
+            if getattr(self.ast, "center", None) is not None:
+                center = np.array(self.ast.center)
+                n_vec = rf - center
+                n_norm = np.linalg.norm(n_vec)
+                if n_norm > 1e-9:
+                    n_hat = n_vec / n_norm
+                    r_ls = X[:, 0:3] - rf
+                    dist = np.linalg.norm(r_ls, axis=1)
+                    dot = np.dot(r_ls, n_hat)
+                    cos_theta = np.cos(np.deg2rad(float(getattr(self.ast, "glide_slope_deg", 90.0))))
+                    violation = np.maximum(0.0, cos_theta * dist - dot)
+                    g_weight = float(getattr(self.ast, "glide_weight", 30.0))
+                    glide_penalty = g_weight * np.sum(violation ** 2)
+
+                    window = float(getattr(self.ast, "vertical_window_s", 0.0))
+                    if window > 0:
+                        t_nodes = np.linspace(t0, tf, self.n_nodes)
+                        mask = t_nodes >= (tf - window)
+                        r_perp = r_ls - np.outer(dot, n_hat)
+                        v_weight = float(getattr(self.ast, "vertical_weight", 30.0))
+                        vertical_penalty = v_weight * np.sum(np.linalg.norm(r_perp[mask], axis=1) ** 2)
+
+            return fuel + 0.01 * smoothness + avoid_penalty + glide_penalty + vertical_penalty
 
         # 约束函数
         def constraints(x):

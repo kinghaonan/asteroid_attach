@@ -272,6 +272,154 @@ class MonteCarloSimulator:
 
         plt.show()
 
+
+def _state_derivative(asteroid, spacecraft, state: np.ndarray, control: np.ndarray) -> np.ndarray:
+    r = state[0:3]
+    v = state[3:6]
+    m = max(state[6], 1.0)
+
+    # Gravity
+    if hasattr(asteroid, "compute_gravity"):
+        g = asteroid.compute_gravity(r)
+    else:
+        r_norm = np.linalg.norm(r)
+        if r_norm > 1e-10:
+            g = -asteroid.mu * r / (r_norm ** 3)
+        else:
+            g = np.zeros(3)
+
+    omega = getattr(asteroid, "omega", np.zeros(3))
+    coriolis = -2 * np.cross(omega, v)
+    centrifugal = -np.cross(omega, np.cross(omega, r))
+
+    thrust_mag = np.linalg.norm(control)
+    thrust_accel = control / m
+
+    r_dot = v
+    v_dot = g + coriolis + centrifugal + thrust_accel
+    m_dot = -thrust_mag / (spacecraft.I_sp * spacecraft.g0) if thrust_mag > 0 else 0.0
+
+    return np.concatenate([r_dot, v_dot, [m_dot]])
+
+
+def simulate_tracking(
+    tracker,
+    asteroid,
+    spacecraft,
+    r0: np.ndarray,
+    v0: np.ndarray,
+    m0: float,
+    t_span: List[float],
+    dt: float,
+) -> Dict:
+    """闭环PID轨迹跟踪仿真"""
+    t0, tf = t_span
+    n_steps = int(np.ceil((tf - t0) / dt))
+    t_nodes = np.linspace(t0, tf, n_steps + 1)
+
+    X = np.zeros((n_steps + 1, 7))
+    U = np.zeros((n_steps, 3))
+    X[0, 0:3] = r0
+    X[0, 3:6] = v0
+    X[0, 6] = m0
+
+    tracker.reset()
+
+    for k in range(n_steps):
+        u, _ = tracker.compute_control(
+            t_nodes[k], X[k, 0:3], X[k, 3:6], X[k, 6], dt
+        )
+        U[k] = u
+
+        k1 = _state_derivative(asteroid, spacecraft, X[k], u)
+        k2 = _state_derivative(asteroid, spacecraft, X[k] + 0.5 * dt * k1, u)
+        k3 = _state_derivative(asteroid, spacecraft, X[k] + 0.5 * dt * k2, u)
+        k4 = _state_derivative(asteroid, spacecraft, X[k] + dt * k3, u)
+
+        X[k + 1] = X[k] + dt / 6.0 * (k1 + 2 * k2 + 2 * k3 + k4)
+        X[k + 1, 6] = max(X[k + 1, 6], 0.2 * m0)
+
+    ref_final = tracker.get_reference_at_time(tf)
+    pos_err = float(np.linalg.norm(X[-1, 0:3] - ref_final["position"]))
+    vel_err = float(np.linalg.norm(X[-1, 3:6] - ref_final["velocity"]))
+
+    return {
+        "t": t_nodes,
+        "r": X[:, 0:3],
+        "v": X[:, 3:6],
+        "m": X[:, 6],
+        "U": U,
+        "pos_error": pos_err,
+        "vel_error": vel_err,
+        "success": True,
+    }
+
+
+class TrackingMonteCarloSimulator:
+    """基于PID闭环跟踪的蒙特卡罗模拟"""
+
+    def __init__(self, tracker, asteroid, spacecraft, n_simulations: int = 50):
+        self.tracker = tracker
+        self.ast = asteroid
+        self.sc = spacecraft
+        self.n_simulations = n_simulations
+        self.results = []
+
+    def run_monte_carlo(
+        self,
+        r0: np.ndarray,
+        v0: np.ndarray,
+        m0: float,
+        t_span: List[float],
+        dt: float,
+        position_noise: float = 20.0,
+        velocity_noise: float = 1.0,
+        max_position_error: float = 1.0,
+        max_velocity_error: float = 1.0,
+    ) -> Dict:
+        self.results = []
+
+        for _ in range(self.n_simulations):
+            r_perturbed = r0 + np.random.normal(0, position_noise, 3)
+            v_perturbed = v0 + np.random.normal(0, velocity_noise, 3)
+
+            sim = simulate_tracking(
+                self.tracker,
+                self.ast,
+                self.sc,
+                r_perturbed,
+                v_perturbed,
+                m0,
+                t_span,
+                dt,
+            )
+
+            success = (sim["pos_error"] <= max_position_error) and (
+                sim["vel_error"] <= max_velocity_error
+            )
+
+            self.results.append(
+                {
+                    "success": success,
+                    "pos_error": sim["pos_error"],
+                    "vel_error": sim["vel_error"],
+                }
+            )
+
+        successes = [r for r in self.results if r["success"]]
+        success_rate = len(successes) / len(self.results) * 100.0
+        pos_errs = [r["pos_error"] for r in self.results]
+        vel_errs = [r["vel_error"] for r in self.results]
+
+        return {
+            "n_total": len(self.results),
+            "success_rate": success_rate,
+            "pos_error_max": float(np.max(pos_errs)),
+            "vel_error_max": float(np.max(vel_errs)),
+            "pos_error_mean": float(np.mean(pos_errs)),
+            "vel_error_mean": float(np.mean(vel_errs)),
+        }
+
     def save_report(self, filepath: str):
         """
         保存模拟报告

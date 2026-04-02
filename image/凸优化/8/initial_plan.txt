@@ -1,0 +1,281 @@
+```yaml
+complete_reproduction_plan:
+  paper_info:
+    title: "Trajectory Design Employing Convex Optimization for Landing on Irregularly Shaped Asteroids"
+    core_contribution: "Convex optimization framework for propellant-optimal powered descent trajectories on asteroids with irregular gravity fields, using lossless convexification and successive solution methods"
+
+  # SECTION 1: File Structure Design
+  file_structure: |
+    asteroid_landing_convex_opt/
+    ├── README.md                           # Documentation (LAST to implement)
+    ├── requirements.txt                    # Dependencies (LAST to implement)
+    ├── main.py                            # Main entry point: run all experiments
+    ├── config.py                          # Parameters for asteroids, vehicle, experiments
+    │
+    ├── gravity_models/                    # Asteroid gravity computation
+    │   ├── __init__.py
+    │   ├── spherical_harmonics.py         # 4×4 model (Eqs.1-3)
+    │   ├── interior_bessel.py             # Spherical Bessel model (Eqs.4-7)
+    │   └── gravity_calculator.py          # Switching logic at Brillouin sphere
+    │
+    ├── optimization/                       # Core optimization algorithms
+    │   ├── __init__.py
+    │   ├── problem_formulation.py         # P1, P2, P3 formulations (Eqs.8-16,42)
+    │   ├── socp_solver.py                 # Fixed-time SOCP with CVX (Eqs.58)
+    │   ├── successive_solver.py           # Iterative linearization (Algorithm 1, Eq.56)
+    │   ├── flight_time_optimizer.py       # Brent's method wrapper (Algorithm 3)
+    │   └── constraints.py                 # Glide slope, vertical motion (Eqs.13,60-62)
+    │
+    ├── dynamics/                          # System dynamics and discretization
+    │   ├── __init__.py
+    │   ├── state_equations.py             # Eqs.44-46 with rotation terms
+    │   ├── discretization.py              # Trapezoidal rule (Eq.58)
+    │   └── scaling.py                     # Variable scaling (Eq.59)
+    │
+    ├── asteroid_data/                     # Asteroid-specific data
+    │   ├── __init__.py
+    │   ├── triaxial_ellipsoids.py         # A1, A2, A3 parameters
+    │   ├── castalia.py                    # Castalia shape, rotation, coefficients
+    │   └── coefficient_loader.py          # Load C_lm, S_lm, Ā_l,n,m, B̄_l,n,m
+    │
+    ├── vehicle/                           # Spacecraft model
+    │   ├── __init__.py
+    │   ├── spacecraft.py                  # Mass, Isp, thrust bounds
+    │   └── engine.py                      # Thrust and mass flow models
+    │
+    ├── experiments/                       # Reproduce paper experiments
+    │   ├── __init__.py
+    │   ├── parameter_sweeps.py            # Propellant vs flight time (Figs.5-7)
+    │   ├── castalia_landing.py            # Main Castalia results (Tables 5,7)
+    │   ├── validation.py                  # Lossless convexification check
+    │   └── trajectory_analysis.py         # Analyze thrust profiles, convergence
+    │
+    ├── utils/                             # Utilities and helpers
+    │   ├── __init__.py
+    │   ├── visualization.py               # 3D plots of trajectories
+    │   ├── metrics.py                     # Propellant, error calculations
+    │   ├── convergence_check.py           # Successive solution convergence
+    │   └── coordinate_transforms.py       # Spherical to Cartesian
+    │
+    └── tests/                             # Unit tests for components
+        ├── __init__.py
+        ├── test_gravity_models.py
+        ├── test_optimization.py
+        └── test_dynamics.py
+
+  # SECTION 2: Implementation Components
+  implementation_components: |
+    COMPONENT 1: ASTEROID GRAVITY MODEL SYSTEM
+    - Purpose: Compute gravitational acceleration for irregular asteroids
+    - Files: gravity_models/spherical_harmonics.py, interior_bessel.py, gravity_calculator.py
+    - Algorithms:
+        * Exterior 4×4 spherical harmonics (Eqs.1-3):
+          U = μ/r Σ_{l=0}^4 Σ_{m=0}^l (r₀/r)^l P_lm(sinδ)[C_lm cos(mλ) + S_lm sin(mλ)]
+          ∇U = ∂U/∂x, ∂U/∂y, ∂U/∂z via chain rule
+        * Interior spherical Bessel (Eqs.4-7):
+          β_n,m(α_l,n) = j_n(α_l,n r/R_b) * H_n,m
+          ∂U/∂r_i = μ/R_b Σ_{l=0}^2 Σ_{n=0}^5 Σ_{m=0}^n Re[∂/∂i(β_n,m)Ā_l,n,m + Im[∂/∂i(β_n,m)B̄_l,n,m]
+        * Switching logic: Use spherical harmonics outside Brillouin sphere, Bessel inside
+    - Parameters: C_lm, S_lm (degree 4), Ā_l,n,m, B̄_l,n,m (l_max=2, n_max=5, m_max=5)
+    - Dependencies: scipy.special for Legendre and Bessel functions
+
+    COMPONENT 2: NONLINEAR PROBLEM FORMULATION (P1)
+    - Purpose: Define original nonconvex optimal control problem
+    - Files: optimization/problem_formulation.py
+    - Equations (Eqs.8-16):
+        * State: x = [r, v, m] where r position, v velocity, m mass
+        * Dynamics: ṙ = v, v̇ = T/m + g(r) - 2ω×v - ω×(ω×r) - ω̇×r
+        * Mass flow: ṁ = -∥T∥/(I_sp * g_0)
+        * Constraints: T_min ≤ ∥T∥ ≤ T_max, m ≥ m_dry, glide slope (Eq.13)
+        * Objective: minimize J = -m(t_f) (maximize final mass)
+    - Variables: Continuous time t ∈ [0, t_f]
+
+    COMPONENT 3: LOSSLESS CONVEXIFICATION ENGINE
+    - Purpose: Transform P1 into convex SOCP problem P3
+    - Files: optimization/problem_formulation.py
+    - Transformations (Section III):
+        * Slack variable: Introduce T_m with ∥T∥ ≤ T_m, T_min ≤ T_m ≤ T_max
+        * Variable change: a_t = T/m, a_tm = T_m/m, q = ln(m)
+        * Taylor expansion about q₀ = ln(m₀):
+          T_min e^{-q₀}[1 - (q-q₀) + 0.5(q-q₀)²] ≤ a_tm ≤ T_max e^{-q₀}[1 - (q-q₀)]
+        * Final SOCP constraint: ∥a_t∥ ≤ a_tm (second-order cone)
+    - Validation: Must check ∥a_t∥ ≈ a_tm (error < 1e-4%) at solution
+
+    COMPONENT 4: SUCCESSIVE SOLUTION SOLVER
+    - Purpose: Iteratively solve sequence of SOCPs to handle nonlinear gravity
+    - Files: optimization/successive_solver.py
+    - Algorithm (Section IV):
+        1. Initialize reference trajectory r_ref(t) = initial guess
+        2. While max∥r_new(t) - r_ref(t)∥ > 0.5m:
+           a. Linearize gravity: g(r) ≈ A(r_ref)r + c(r_ref)
+              where A = dominant term (-μ/r³ for spherical, Eq.57 for Bessel)
+           b. Form SOCP with linearized dynamics (Eq.56)
+           c. Solve SOCP to get new trajectory r_new(t)
+           d. Update r_ref = r_new
+        3. Return converged trajectory
+    - Parameters: Convergence tolerance 0.5m, max iterations 10
+    - Discretization: Trapezoidal rule with Δt = 2s (Eq.58)
+
+    COMPONENT 5: FLIGHT TIME OPTIMIZER (BRENT'S METHOD)
+    - Purpose: Find optimal flight time minimizing propellant
+    - Files: optimization/flight_time_optimizer.py
+    - Algorithm (Section V):
+        1. Define function f(t_f) = propellant_used(t_f) via inner SOCP solver
+        2. Use Brent's method on f(t_f) over [t_min, t_max]
+        3. Coarse search: Δt = 10s for initial Brent iterations
+        4. Fine solution: Δt = 2s at optimal t_f*
+    - Properties: f(t_f) is unimodal (Figs.5-7)
+    - Expected evaluations: 7 for full thrust, 9-11 for quarter thrust
+
+    COMPONENT 6: CONSTRAINT SYSTEM
+    - Purpose: Implement trajectory constraints
+    - Files: optimization/constraints.py
+    - Constraints:
+        * Glide slope: ∥r - r_f∥ cosθ - (r - r_f)·n̂ ≤ 0 (Eq.13,62)
+        * Vertical motion: (r - r_f)·n̂ ≥ 0 for final phase (Eqs.60-61)
+        * Mass limit: q ≥ ln(m_dry)
+        * Boundary conditions: r(0)=r₀, v(0)=v₀, m(0)=m_wet; r(t_f)=r_f, v(t_f)=v_f
+
+    COMPONENT 7: SCALING SYSTEM
+    - Purpose: Numerical conditioning for SOCP solver
+    - Files: dynamics/scaling.py
+    - Scaling factors (Eq.59):
+        * Distance: R_sc = γ (smallest semi-major axis)
+        * Velocity: v_sc = √(R_sc * g_sc)
+        * Acceleration: g_sc = μ / R_sc²
+        * Time: t_sc = √(R_sc / g_sc)
+        * Mass: m_sc = 1 (use q = ln(m))
+    - Implementation: Scale all variables before SOCP, unscale after
+
+  # SECTION 3: Validation & Evaluation
+  validation_approach: |
+    VALIDATION 1: REPRODUCE PAPER FIGURES AND TABLES
+    - Experiment 1: Parameter sweeps (Figs.5-7)
+        * Sweep flight time t_f for triaxial ellipsoids A1, A2, A3
+        * Plot propellant usage vs t_f, verify unimodal shape
+        * Compare with Mars landing (constant gravity) baseline
+    - Experiment 2: Castalia landing (Tables 5,7)
+        * Landing sites LS1, LS2, LS3 with initial conditions from Table 4
+        * Full thrust (80N max) and quarter thrust (20N max)
+        * Verify optimal flight times: ~512-513s (full), ~1050-1076s (quarter)
+        * Verify propellant usage: ~5.31-5.34kg (full), ~3.4kg (quarter)
+    - Experiment 3: Thrust profiles (Figs.8-11)
+        * Show bang-bang control structure (max-min-max or max-min)
+        * Verify switching times match paper values
+
+    VALIDATION 2: ALGORITHM CONVERGENCE
+    - Successive solution: Should converge in 2-5 iterations for ellipsoids, 3 for Castalia
+    - Position tolerance: max∥r_new - r_prev∥ < 0.5m
+    - Lossless convexification: Verify ∥a_t∥ = a_tm within 1e-4% error
+
+    VALIDATION 3: CONSTRAINT SATISFACTION
+    - All constraints satisfied at solution:
+        * Thrust bounds: T_min ≤ ∥T(t)∥ ≤ T_max
+        * Glide slope: trajectory stays within cone
+        * Mass: m(t) ≥ m_dry
+        * Boundary conditions: position and velocity matched at endpoints
+
+    VALIDATION 4: GRAVITY MODEL ACCURACY
+    - Compare spherical harmonics + Bessel vs polyhedron model (5-10% error expected)
+    - Verify smooth transition at Brillouin sphere
+
+    SUCCESS CRITERIA:
+    1. All paper results reproduced within 5% tolerance
+    2. Algorithms converge within expected iteration counts
+    3. Computation time reasonable (~7 minutes for Castalia with 2s dt)
+    4. Lossless convexification validated numerically
+
+  # SECTION 4: Environment & Dependencies
+  environment_setup: |
+    PROGRAMMING LANGUAGE:
+    - Python 3.8+ (primary implementation language)
+
+    CORE DEPENDENCIES:
+    - numpy >= 1.21.0 (numerical computations)
+    - scipy >= 1.7.0 (special functions, Brent's method)
+    - cvxpy >= 1.2.0 (convex optimization formulation)
+    - SOCP solver: MOSEK (academic license) or SCS (open-source alternative)
+    - matplotlib >= 3.5.0 (visualization)
+
+    OPTIONAL DEPENDENCIES:
+    - pytest (for running tests)
+    - jupyter (for interactive analysis)
+    - tqdm (for progress bars in parameter sweeps)
+
+    HARDWARE REQUIREMENTS:
+    - Standard desktop/laptop sufficient
+    - No GPU acceleration required (optimization is CPU-based)
+    - RAM: 8GB minimum, 16GB recommended for larger problems
+    - Storage: ~1GB for code and data
+
+    INSTALLATION:
+    pip install numpy scipy cvxpy matplotlib
+    # For MOSEK solver: follow installation at mosek.com
+    # For SCS solver: pip install scs
+
+    SPECIAL SETUP:
+    - Castalia coefficients need to be obtained from references [25,31] in paper
+    - Triaxial ellipsoid coefficients can be derived analytically
+
+  # SECTION 5: Implementation Strategy
+  implementation_strategy: |
+    PHASE 1: FOUNDATION (Weeks 1-2)
+    1. Set up project structure and environment
+    2. Implement gravity models:
+        - Start with spherical harmonics (4×4)
+        - Add spherical Bessel interior model
+        - Implement switching at Brillouin sphere
+    3. Create asteroid data classes for triaxial ellipsoids and Castalia
+    4. Implement scaling system (Eq.59)
+    5. Test gravity models against known values
+
+    PHASE 2: CORE OPTIMIZATION (Weeks 3-5)
+    1. Implement state equations (Eqs.44-46) with rotation terms
+    2. Implement trapezoidal discretization (Eq.58)
+    3. Code SOCP formulation for fixed-time problem:
+        - Variables: x_j = [r_j, v_j, q_j], u_j = [a_t_j, a_tm_j]
+        - Objective: minimize -q_N
+        - Constraints: dynamics, thrust bounds, glide slope, mass limit
+    4. Integrate with CVXPY and test on simple constant-gravity case
+    5. Implement successive solution algorithm:
+        - Linearization of gravity (dominant term A and residual c)
+        - Iteration until convergence (0.5m tolerance)
+
+    PHASE 3: FLIGHT TIME OPTIMIZATION (Week 6)
+    1. Implement Brent's method wrapper
+    2. Add coarse-to-fine strategy: 10s dt for Brent, 2s dt for final solution
+    3. Test on triaxial ellipsoids to reproduce unimodal curves (Figs.5-7)
+    4. Verify optimal flight times match paper values
+
+    PHASE 4: CASTALIA EXPERIMENTS (Week 7)
+    1. Load Castalia coefficients (from references or approximations)
+    2. Run experiments for three landing sites (LS1, LS2, LS3)
+    3. Test both full and quarter thrust configurations
+    4. Validate against Table 5 (switching times) and Table 7 (optimal times/propellant)
+
+    PHASE 5: VALIDATION AND REFINEMENT (Week 8)
+    1. Implement constraint validation (glide slope, vertical motion)
+    2. Verify lossless convexification (check ∥a_t∥ = a_tm)
+    3. Run comprehensive tests on all asteroids
+    4. Optimize performance and numerical stability
+    5. Create visualization tools for trajectories and thrust profiles
+
+    PHASE 6: DOCUMENTATION AND PACKAGING (Week 9)
+    1. Create README.md with usage instructions
+    2. Generate requirements.txt with exact versions
+    3. Add example scripts and demos
+    4. Write unit tests for critical components
+
+    RISK MITIGATION:
+    - Missing Castalia coefficients: Use approximations or synthetic data initially
+    - SOCP solver issues: Test with both MOSEK and SCS, implement proper scaling
+    - Convergence problems: Adjust linearization or add regularization
+    - Numerical instability: Ensure proper scaling and use double precision
+
+    VERIFICATION AT EACH PHASE:
+    - Phase 1: Gravity models match analytical cases
+    - Phase 2: SOCP solves simple problems correctly
+    - Phase 3: Brent's method finds known minima
+    - Phase 4: Castalia results match paper within tolerance
+    - Phase 5: All constraints satisfied, convexification validated
+```

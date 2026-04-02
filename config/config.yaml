@@ -1,160 +1,206 @@
-# 小行星附着轨迹设计项目 - 配置文件
-# 修改此文件来调整各阶段的参数，无需修改代码
+﻿# 灏忚鏄熼檮鐫€杞ㄨ抗璁捐椤圭洰 - 閰嶇疆鏂囦欢
+# 淇敼姝ゆ枃浠舵潵璋冩暣鍚勯樁娈电殑鍙傛暟锛屾棤闇€淇敼浠ｇ爜
 
-# ==================== 第一阶段：引力场学习 ====================
+# ==================== 绗竴闃舵锛氬紩鍔涘満瀛︿範 ====================
 phase1:
-  # PLY模型设置
+  # PLY妯″瀷璁剧疆
   ply_file: "Castalia Radar-based.ply"
-  target_diameter_m: 1400.0  # 目标直径（米）
-  asteroid_density: 2670      # 小行星密度（kg/m³）
+  target_diameter_m: 1400.0  # 鐩爣鐩村緞锛堢背锛?
+  asteroid_density: 2670      # 灏忚鏄熷瘑搴︼紙kg/m鲁锛?
   
-  # 样本生成设置
+  # 鏍锋湰鐢熸垚璁剧疆
   sampling:
-    num_samples: 500          # 样本数量（验证用500，正式用5000-10000）
-    min_r_ratio: 1.001          # 最小采样半径倍数（相对小行星半径）
-    max_r_ratio: 5.0          # 最大采样半径倍数
-    reuse_existing: true      # 是否复用已存在的样本文件
+    num_samples: 500          # 鏍锋湰鏁伴噺锛堥獙璇佺敤500锛屾寮忕敤5000-10000锛?
+    min_r_ratio: 1.001          # 鏈€灏忛噰鏍峰崐寰勫€嶆暟锛堢浉瀵瑰皬琛屾槦鍗婂緞锛?
+    max_r_ratio: 5.0          # 鏈€澶ч噰鏍峰崐寰勫€嶆暟
+    reuse_existing: true      # 鏄惁澶嶇敤宸插瓨鍦ㄧ殑鏍锋湰鏂囦欢
     
-    # 样本文件路径（支持两种格式，优先使用 pkl）
-    pkl_file: "data/samples/samples_with_gradient.pkl"  # pickle格式（推荐，包含完整信息）
-    npz_file: "data/samples/gravity_samples.npz"       # npz格式（备用）
+    # 鏍锋湰鏂囦欢璺緞锛堟敮鎸佷袱绉嶆牸寮忥紝浼樺厛浣跨敤 pkl锛?
+    pkl_file: "data/samples/samples_with_gradient.pkl"  # pickle鏍煎紡锛堟帹鑽愶紝鍖呭惈瀹屾暣淇℃伅锛?
+    npz_file: "data/samples/gravity_samples.npz"       # npz鏍煎紡锛堝鐢級
   
-  # DNN模型架构
+  # DNN妯″瀷鏋舵瀯
   model:
-    input_dim: 3              # 输入维度（位置xyz）
-    gravity_dim: 3            # 引力输出维度
-    gradient_dim: 9           # 梯度输出维度
-    shared_features: [256, 512, 512, 512, 256]  # 共享层结构
-    head_features: [128]      # 输出头层结构
+    input_dim: 3              # 杈撳叆缁村害锛堜綅缃畑yz锛?
+    gravity_dim: 3            # 寮曞姏杈撳嚭缁村害
+    gradient_dim: 9           # 姊害杈撳嚭缁村害
+    shared_features: [256, 512, 512, 512, 256]  # 鍏变韩灞傜粨鏋?
+    head_features: [128]      # 杈撳嚭澶村眰缁撴瀯
   
-  # 训练参数
+  # 璁粌鍙傛暟
   training:
-    epochs: 200                # 训练轮次
-    batch_size: 64            # 批次大小
-    learning_rate: 0.0001     # 学习率
-    lr_scheduler_step: 20     # 学习率调整步长
-    lr_scheduler_gamma: 0.5   # 学习率调整系数
-    gravity_weight: 1.0       # 引力损失权重
-    gradient_weight: 0.5      # 梯度损失权重
-    print_freq: 5             # 打印频率（每N轮打印一次）
+    epochs: 200                # 璁粌杞
+    batch_size: 64            # 鎵规澶у皬
+    learning_rate: 0.0001     # 瀛︿範鐜?
+    lr_scheduler_step: 20     # 瀛︿範鐜囪皟鏁存闀?
+    lr_scheduler_gamma: 0.5   # 瀛︿範鐜囪皟鏁寸郴鏁?
+    gravity_weight: 1.0       # 寮曞姏鎹熷け鏉冮噸
+    gradient_weight: 0.5      # 姊害鎹熷け鏉冮噸
+    print_freq: 5             # 鎵撳嵃棰戠巼锛堟瘡N杞墦鍗颁竴娆★級
   
-  # 输出设置
+  # 杈撳嚭璁剧疆
   output:
     model_file: "data/models/gravity_dnn_model.pth"
     save_plots: true
 
-# ==================== 第二阶段：轨迹优化 ====================
+# ==================== 绗簩闃舵锛氳建杩逛紭鍖?====================
 phase2:
-  # 航天器参数
+  # 鑸ぉ鍣ㄥ弬鏁?
   spacecraft:
-    T_max: 100.0              # 最大推力（N）- 增加以确保有足够控制能力
-    I_sp: 400.0               # 比冲（s）
-    g0: 9.81                  # 地球重力加速度（m/s²）
-    m0: 1000.0                # 初始质量（kg）
+    T_max: 100.0              # 鏈€澶ф帹鍔涳紙N锛? 澧炲姞浠ョ‘淇濇湁瓒冲鎺у埗鑳藉姏
+    I_sp: 400.0               # 姣斿啿锛坰锛?
+    g0: 9.81                  # 鍦扮悆閲嶅姏鍔犻€熷害锛坢/s虏锛?
+    m0: 1000.0                # 鍒濆璐ㄩ噺锛坘g锛?
   
-  # 小行星参数
+  # 灏忚鏄熷弬鏁?
   asteroid:
-    omega: [0, 0, 0.0003317]  # 自转角速度（rad/s），2π/(5.27*3600)
-    mu: 446300.0              # 引力常数（m³/s²）
+    omega: [0, 0, 0.0003317]  # 鑷浆瑙掗€熷害锛坮ad/s锛夛紝2蟺/(5.27*3600)
+    mu: 446300.0              # 寮曞姏甯告暟锛坢鲁/s虏锛?
+    avoid_margin_m: 1.0
+    avoid_weight: 100.0
+    glide_slope_deg: 20.0
+    glide_weight: 30.0
+    vertical_window_s: 20.0
+    vertical_weight: 30.0
+    enforce_no_penetration: true
   
-  # 边界条件
+  # 杈圭晫鏉′欢
   boundary_conditions:
-    r0: [10177, 6956, 8256]   # 初始位置（m）
-    v0: [-25, -12, -17]       # 初始速度（m/s）
-    rf: [676, 5121, 449]      # 目标位置（m）
-    vf: [0, 0, 0]             # 目标速度（m/s）
-    t_span: [0, 2000]         # 时间区间（s）
+    r0: [2100.0069, -0.0040, 0.0096]
+    v0: [0.0, 0.0, 0.0]
+    rf: [599.5300, 39.5944, 113.9405]
+    vf: [0.0, 0.0, 0.0]
+    t_span: [0, 3500]
   
-  # 伪谱法参数
+  # 浼氨娉曞弬鏁?
   pseudospectral:
-    enabled: true             # 是否启用
-    n_nodes: 20               # 节点数
-    max_iter: 300             # 最大迭代次数
+    enabled: true             # 鏄惁鍚敤
+    n_nodes: 80
+    max_iter: 300             # 鏈€澶ц凯浠ｆ鏁?
   
-  # 打靶法参数
+  # 鎵撻澏娉曞弬鏁?
   shooting:
-    enabled: true             # 是否启用
-    n_guesses: 8              # 初始猜测数量
+    n_nodes: 80
+    enabled: true             # 鏄惁鍚敤
+    n_guesses: 8              # 鍒濆鐚滄祴鏁伴噺
   
-  # 同伦法参数
+  # 鍚屼鸡娉曞弬鏁?
   homotopy:
-    enabled: true             # 是否启用
-    n_nodes: 20               # 节点数
-    n_steps: 5                # 同伦步数
+    enabled: true             # 鏄惁鍚敤
+    n_nodes: 80
+    n_steps: 8
   
-  # 直接法/凸优化参数
+  # 鐩存帴娉?鍑镐紭鍖栧弬鏁?
   direct:
-    enabled: true             # 是否启用
-    n_nodes: 20               # 节点数
-    max_iter: 50             # 最大迭代次数
+    enabled: true             # 鏄惁鍚敤
+    n_nodes: 60
+    max_iter: 50             # 鏈€澶ц凯浠ｆ鏁?
   
-  # 凸优化（SOCP）参数 - 基于NASA论文
+  # 鍑镐紭鍖栵紙SOCP锛夊弬鏁?- 鍩轰簬NASA璁烘枃
   socp:
-    enabled: true             # 启用SOCP
-    n_nodes: 15               # 节点数
-    max_iter: 20              # 最大迭代次数
+    enabled: true             # 鍚敤SOCP
+    n_nodes: 15               # 鑺傜偣鏁?
+    max_iter: 20              # 鏈€澶ц凯浠ｆ鏁?
   
-  # 输出设置
+  # 杈撳嚭璁剧疆
   output:
     trajectory_file: "results/phase2/optimal_trajectory.pkl"
     save_plots: true
 
-# ==================== 第三阶段：控制与仿真 ====================
+  # 澶栧眰椋炶鏃堕棿鎼滅储锛堝弬鑰冩枃鐚細鍥哄畾椋炶鏃堕棿 + 澶栧眰涓€缁翠紭鍖栵級
+  time_search:
+    t_min: 2000
+    t_max: 6000
+    samples: 7
+    pos_weight: 10.0
+    vel_weight: 5.0
+    pos_thresh: 50.0
+    vel_thresh: 5.0
+    penalty: 1000000.0
+
+  # Paper-style successive convexification
+  convex_paper:
+    dt: 5.0
+    max_iterations: 8
+    position_tolerance: 1.0
+    fd_eps: 0.001
+    solver: "ECOS"
+    solver_max_iters: 5000
+    solver_eps: 1.0e-6
+    min_radius_margin: 0.0
+    trust_radius_m: 3000.0
+    min_radius_weight: 1000.0
+    smooth_weight: 5.0
+    max_delta_a: 0.1
+    vertical_eps: 2.0
+
+# ==================== 绗笁闃舵锛氭帶鍒朵笌浠跨湡 ====================
 phase3:
-  # PID控制器参数
+  # PID鎺у埗鍣ㄥ弬鏁?
   pid:
-    Kp: 2.0                   # 比例增益
-    Ki: 0.2                   # 积分增益
-    Kd: 1.0                   # 微分增益
-    integral_limit: 100.0     # 积分限幅
+    Kp: 0.8                   # 姣斾緥澧炵泭
+    Ki: 0.02                   # 绉垎澧炵泭
+    Kd: 0.4                   # 寰垎澧炵泭
+    integral_limit: 100.0     # 绉垎闄愬箙
   
-  # 自适应PID参数（可选）
+  # 鑷€傚簲PID鍙傛暟锛堝彲閫夛級
   adaptive_pid:
-    enabled: false            # 是否使用自适应PID
+    enabled: false            # 鏄惁浣跨敤鑷€傚簲PID
     adaptation_rate: 0.01
     error_threshold: 1.0
   
-  # 轨迹跟踪仿真参数
+  # 杞ㄨ抗璺熻釜浠跨湡鍙傛暟
   tracking:
-    dt: 1.0                   # 时间步长（s）
-    n_steps: 10               # 模拟步数
-    position_noise: 20.0      # 位置扰动（m）
-    velocity_noise: 1.0       # 速度扰动（m/s）
+    dt: 0.1                   # 鏃堕棿姝ラ暱锛坰锛?
+    n_steps: 10               # 妯℃嫙姝ユ暟
+    position_noise: 20.0      # 浣嶇疆鎵板姩锛坢锛?
+    velocity_noise: 1.0       # 閫熷害鎵板姩锛坢/s锛?
   
-  # 蒙特卡洛模拟参数
+  # 钂欑壒鍗℃礇妯℃嫙鍙傛暟
   monte_carlo:
-    enabled: true             # 是否启用
-    n_simulations: 20         # 模拟次数（验证用20，正式用100+）
-    position_noise: 20.0      # 初始位置扰动（m）
-    velocity_noise: 1.0       # 初始速度扰动（m/s）
-    success_threshold: 70.0   # 成功率阈值（%）
+    enabled: true             # 鏄惁鍚敤
+    n_simulations: 20         # 妯℃嫙娆℃暟锛堥獙璇佺敤20锛屾寮忕敤100+锛?
+    position_noise: 20.0      # 鍒濆浣嶇疆鎵板姩锛坢锛?
+    velocity_noise: 1.0       # 鍒濆閫熷害鎵板姩锛坢/s锛?
+    success_threshold: 70.0   # 鎴愬姛鐜囬槇鍊硷紙%锛?
   
-  # 评估标准
+  # 璇勪及鏍囧噯
   evaluation:
-    max_position_error: 50.0  # 最大允许位置误差（m）
-    max_velocity_error: 5.0   # 最大允许速度误差（m/s）
-    min_success_rate: 70.0    # 最小成功率（%）
+    max_position_error: 1.0  # 鏈€澶у厑璁镐綅缃宸紙m锛?
+    max_velocity_error: 1.0   # 鏈€澶у厑璁搁€熷害璇樊锛坢/s锛?
+    min_success_rate: 70.0    # 鏈€灏忔垚鍔熺巼锛?锛?
   
-  # 输出设置
+  # 杈撳嚭璁剧疆
   output:
     results_file: "results/phase3/control_simulation.pkl"
     report_file: "results/phase3/final_report.txt"
     save_plots: true
 
-# ==================== 全局设置 ====================
+# ==================== 鍏ㄥ眬璁剧疆 ====================
 global:
-  # 随机种子（用于可重复性）
+  # 闅忔満绉嶅瓙锛堢敤浜庡彲閲嶅鎬э級
   random_seed: 42
   
-  # 绘图设置
+  # 缁樺浘璁剧疆
   plotting:
-    dpi: 150                  # 图像分辨率
-    figure_size: [15, 10]     # 默认图像尺寸
-    font_family: "SimHei"     # 中文字体
-    save_format: "png"        # 图像格式
+    dpi: 150                  # 鍥惧儚鍒嗚鲸鐜?
+    figure_size: [15, 10]     # 榛樿鍥惧儚灏哄
+    font_family: "SimHei"     # 涓枃瀛椾綋
+    save_format: "png"        # 鍥惧儚鏍煎紡
   
-  # 调试模式
-  debug: false                # 是否打印调试信息
+  # 璋冭瘯妯″紡
+  debug: false                # 鏄惁鎵撳嵃璋冭瘯淇℃伅
   
-  # 工作目录（相对于项目根目录）
+  # 宸ヤ綔鐩綍锛堢浉瀵逛簬椤圭洰鏍圭洰褰曪級
   working_directory: "."
+
+
+
+
+
+
+
+
+
+
+

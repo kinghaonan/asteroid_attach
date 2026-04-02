@@ -43,6 +43,25 @@ class FastHomotopyOptimizer:
         
         self.n_states = 7
         self.n_controls = 3
+
+    def _enforce_no_penetration(self, r: np.ndarray, v: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Project state to asteroid surface if it penetrates."""
+        if not getattr(self.ast, "enforce_no_penetration", False):
+            return r, v
+        if self.ast.center is None or self.ast.radius is None:
+            return r, v
+        center = np.asarray(self.ast.center)
+        radius = float(self.ast.radius)
+        vec = r - center
+        dist = np.linalg.norm(vec)
+        if dist < radius:
+            if dist < 1e-9:
+                vec = np.array([1.0, 0.0, 0.0])
+                dist = 1.0
+            normal = vec / dist
+            r = center + normal * radius
+            v = v - min(0.0, np.dot(v, normal)) * normal
+        return r, v
     
     def compute_gravity(self, r: np.ndarray) -> np.ndarray:
         """计算引力加速度"""
@@ -81,6 +100,7 @@ class FastHomotopyOptimizer:
     ) -> np.ndarray:
         """前向积分得到状态轨迹"""
         t0, tf = t_span
+        t_nodes = np.linspace(t0, tf, self.n_nodes)
         dt = (tf - t0) / (self.n_nodes - 1)
         
         X = np.zeros((self.n_nodes, self.n_states))
@@ -97,6 +117,9 @@ class FastHomotopyOptimizer:
             
             X[k+1] = X[k] + dt/6*(k1 + 2*k2 + 2*k3 + k4)
             X[k+1, 6] = max(X[k+1, 6], 0.3 * m0)
+            r_new, v_new = self._enforce_no_penetration(X[k+1, 0:3], X[k+1, 3:6])
+            X[k+1, 0:3] = r_new
+            X[k+1, 3:6] = v_new
         
         return X
     
@@ -191,6 +214,7 @@ class FastHomotopyOptimizer:
         """
         t0, tf = t_span
         dt = (tf - t0) / (self.n_nodes - 1)
+        t_nodes = np.linspace(t0, tf, self.n_nodes)
         
         def residuals(u_flat):
             U = u_flat.reshape((self.n_nodes, self.n_controls))
@@ -198,12 +222,68 @@ class FastHomotopyOptimizer:
             
             pos_err = X[-1, 0:3] - rf
             vel_err = X[-1, 3:6] - vf
+
+            # Collision avoidance: penalize penetration into asteroid
+            avoid_res = np.array([])
+            if getattr(self.ast, "radius", None) is not None and getattr(self.ast, "center", None) is not None:
+                center = np.array(self.ast.center)
+                radius = float(self.ast.radius)
+                margin = float(getattr(self.ast, "avoid_margin_m", 1.0))
+                safe_radius = max(radius - margin, 0.0)
+                dists = np.linalg.norm(X[:, 0:3] - center, axis=1)
+                penetration = np.maximum(0.0, safe_radius - dists)
+                weight = float(getattr(self.ast, "avoid_weight", 50.0))
+                weight = weight * (0.2 + 0.8 * constraint_weight)
+                avoid_res = penetration * weight
+
+            # Glide slope constraint (cone about landing site normal)
+            glide_res = np.array([])
+            if getattr(self.ast, "center", None) is not None:
+                center = np.array(self.ast.center)
+                n_vec = rf - center
+                n_norm = np.linalg.norm(n_vec)
+                if n_norm > 1e-9:
+                    n_hat = n_vec / n_norm
+                    r_ls = X[:, 0:3] - rf
+                    dist = np.linalg.norm(r_ls, axis=1)
+                    dot = np.dot(r_ls, n_hat)
+                    cos_theta = np.cos(np.deg2rad(float(getattr(self.ast, "glide_slope_deg", 90.0))))
+                    violation = np.maximum(0.0, cos_theta * dist - dot)
+                    g_weight = float(getattr(self.ast, "glide_weight", 30.0))
+                    g_weight = g_weight * (0.2 + 0.8 * constraint_weight)
+                    glide_res = violation * g_weight
+
+            # Near-landing vertical motion constraint (reduce lateral displacement)
+            vertical_res = np.array([])
+            if getattr(self.ast, "center", None) is not None:
+                center = np.array(self.ast.center)
+                n_vec = rf - center
+                n_norm = np.linalg.norm(n_vec)
+                if n_norm > 1e-9:
+                    n_hat = n_vec / n_norm
+                    r_ls = X[:, 0:3] - rf
+                    dot = np.dot(r_ls, n_hat)
+                    r_perp = r_ls - np.outer(dot, n_hat)
+                    window = float(getattr(self.ast, "vertical_window_s", 0.0))
+                    if window > 0:
+                        mask = t_nodes >= (tf - window)
+                        v_weight = float(getattr(self.ast, "vertical_weight", 30.0))
+                        v_weight = v_weight * (0.2 + 0.8 * constraint_weight)
+                        vertical_res = np.linalg.norm(r_perp[mask], axis=1) * v_weight
+
+            # Control smoothness (reduce jittery trajectories)
+            du = U[1:] - U[:-1]
+            smooth_res = du.flatten() * 0.001
             
             # 加权的终端约束 - 增加速度权重
             residuals = np.concatenate([
                 pos_err * 20.0 * constraint_weight,
                 vel_err * 100.0 * constraint_weight,  # 更高的速度权重
                 U.flatten() * 0.0001,
+                smooth_res,
+                avoid_res,
+                glide_res,
+                vertical_res,
             ])
             
             return residuals
@@ -219,7 +299,7 @@ class FastHomotopyOptimizer:
             bounds=(np.array([b[0] for b in bounds]), np.array([b[1] for b in bounds])),
             method='trf',
             ftol=1e-6,
-            max_nfev=50,
+            max_nfev=200,
             verbose=0,
         )
         

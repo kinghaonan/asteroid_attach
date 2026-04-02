@@ -14,7 +14,7 @@
 
 # 原版控制器
 from .pid_controller import PIDController, AdaptivePIDController
-from .monte_carlo import MonteCarloSimulator
+from .monte_carlo import MonteCarloSimulator, TrackingMonteCarloSimulator, simulate_tracking
 from .validator import ResultValidator, evaluate_project
 
 # 优化版控制器
@@ -30,6 +30,8 @@ __all__ = [
     "PIDController",
     "AdaptivePIDController",
     "MonteCarloSimulator",
+    "TrackingMonteCarloSimulator",
+    "simulate_tracking",
     "ResultValidator",
     "evaluate_project",
     # 优化版

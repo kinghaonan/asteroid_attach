@@ -15,42 +15,50 @@
 - OptimizedSCPOptimizer
 """
 
-import sys
-import os
+# Keep imports optional so this package can be imported without all legacy modules.
+_exports = {}
 
-algorithms_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "algorithms")
-if algorithms_path not in sys.path:
-    sys.path.insert(0, algorithms_path)
+def _try_import(name: str):
+    try:
+        module = __import__(name, fromlist=["*"])
+        return module
+    except Exception:
+        return None
 
-# 原版算法
-from shooting_method import ShootingMethodOptimizer
-from pseudospectral import PseudospectralOptimizer
-from convex_optimizer_scp import SCPOptimizer
-from direct_method import DirectMethodOptimizer, ConvexOptimizer
+# Try legacy modules (may not exist in this repo)
+_shooting = _try_import("shooting_method")
+_pseudospectral = _try_import("pseudospectral")
+_scp = _try_import("convex_optimizer_scp")
+_direct = _try_import("direct_method")
+_shooting_opt = _try_import("shooting_method_optimized")
+_pseudospectral_opt = _try_import("pseudospectral_optimized")
+_scp_opt = _try_import("convex_optimizer_scp_optimized")
 
-# 优化版算法
-from shooting_method_optimized import OptimizedShootingMethodOptimizer
-from pseudospectral_optimized import OptimizedPseudospectralOptimizer
-from convex_optimizer_scp_optimized import OptimizedSCPOptimizer
+if _shooting and hasattr(_shooting, "ShootingMethodOptimizer"):
+    _exports["ShootingMethodOptimizer"] = _shooting.ShootingMethodOptimizer
+if _pseudospectral and hasattr(_pseudospectral, "PseudospectralOptimizer"):
+    _exports["PseudospectralOptimizer"] = _pseudospectral.PseudospectralOptimizer
+if _scp and hasattr(_scp, "SCPOptimizer"):
+    _exports["SCPOptimizer"] = _scp.SCPOptimizer
+if _direct and hasattr(_direct, "DirectMethodOptimizer"):
+    _exports["DirectMethodOptimizer"] = _direct.DirectMethodOptimizer
+if _direct and hasattr(_direct, "ConvexOptimizer"):
+    _exports["ConvexOptimizer"] = _direct.ConvexOptimizer
 
-# 别名（向后兼容）
-ShootingMethodOptimizerOptimized = OptimizedShootingMethodOptimizer
-PseudospectralOptimizerOptimized = OptimizedPseudospectralOptimizer
-SCPOptimizerOptimized = OptimizedSCPOptimizer
+if _shooting_opt and hasattr(_shooting_opt, "OptimizedShootingMethodOptimizer"):
+    _exports["OptimizedShootingMethodOptimizer"] = _shooting_opt.OptimizedShootingMethodOptimizer
+if _pseudospectral_opt and hasattr(_pseudospectral_opt, "OptimizedPseudospectralOptimizer"):
+    _exports["OptimizedPseudospectralOptimizer"] = _pseudospectral_opt.OptimizedPseudospectralOptimizer
+if _scp_opt and hasattr(_scp_opt, "OptimizedSCPOptimizer"):
+    _exports["OptimizedSCPOptimizer"] = _scp_opt.OptimizedSCPOptimizer
 
-__all__ = [
-    # 原版
-    "ShootingMethodOptimizer",
-    "PseudospectralOptimizer",
-    "SCPOptimizer",
-    "DirectMethodOptimizer",
-    "ConvexOptimizer",
-    # 优化版
-    "OptimizedShootingMethodOptimizer",
-    "OptimizedPseudospectralOptimizer",
-    "OptimizedSCPOptimizer",
-    # 别名
-    "ShootingMethodOptimizerOptimized",
-    "PseudospectralOptimizerOptimized",
-    "SCPOptimizerOptimized",
-]
+# Back-compat aliases if optimized versions exist
+if "OptimizedShootingMethodOptimizer" in _exports:
+    _exports["ShootingMethodOptimizerOptimized"] = _exports["OptimizedShootingMethodOptimizer"]
+if "OptimizedPseudospectralOptimizer" in _exports:
+    _exports["PseudospectralOptimizerOptimized"] = _exports["OptimizedPseudospectralOptimizer"]
+if "OptimizedSCPOptimizer" in _exports:
+    _exports["SCPOptimizerOptimized"] = _exports["OptimizedSCPOptimizer"]
+
+globals().update(_exports)
+__all__ = sorted(_exports.keys())
